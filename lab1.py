@@ -1,126 +1,196 @@
-from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                               QLabel, QLineEdit, QPushButton, QMessageBox)
-from PySide6.QtGui import QPainter, QColor, QPen
-from PySide6.QtCore import Qt, QPointF
 import sys
-import math
+import numpy as np
+from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, QDoubleSpinBox, QLabel, QPushButton,
+                               QHBoxLayout, QLineEdit)
+from PySide6.QtGui import QPainter, QPen, QBrush, QFont
+from PySide6.QtCore import Qt
 
-# Определение функций
-functions = {
-    1: (lambda x: x, "Простая функция: y = x"),
-    2: (lambda x: x ** 2, "Сложная функция: y = x^2"),
-    3: (lambda x: 1 if x != 0 else 0, "Функция с точкой разрыва: y = 1 (x ≠ 0), 0 (x = 0)")
-}
 
-class GraphWidget(QWidget):
-    def __init__(self, data, parent=None):
-        super().__init__(parent)
-        self.data = data
+class PlotWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setMinimumSize(800, 600)
+        self.x_min = -10.0
+        self.x_max = 10.0
+        self.y_min = self.x_min
+        self.y_max = self.x_max
+        self.step = 1.0
+        self.available_functions = {
+            "1": (lambda x: x ** 2, Qt.blue),  # f(x) = x^2
+            "2": (lambda x: np.sin(x) * np.exp(-0.1 * x ** 2), Qt.green),  # f(x) = sin(x) * exp(-0.1 * x^2)
+            "3": (lambda x: 1 / x if x != 0 else None, Qt.red)  # f(x) = 1/x
+        }
+        self.function_formulas = {
+            "1": "f(x) = x^2",
+            "2": "f(x) = sin(x) * exp(-0.1 * x^2)",
+            "3": "f(x) = 1/x"
+        }
+        self.selected_functions = []  # Список выбранных функций
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
         width, height = self.width(), self.height()
-        margin = 40
-        graph_width = width - 2 * margin
-        graph_height = height - 2 * margin
+        center_x, center_y = width // 2, height // 2
+        grid_step = min(width, height) / ((self.x_max - self.x_min) / self.step * 2)
 
-        # Рисуем сетку и координатные оси
-        painter.setPen(QPen(Qt.lightGray, 1, Qt.DashLine))
-        step_x = graph_width / 10
-        step_y = graph_height / 10
-        for i in range(11):
-            # Вертикальные линии
-            x = margin + i * step_x
-            painter.drawLine(x, margin, x, height - margin)
-            # Горизонтальные линии
-            y = margin + i * step_y
-            painter.drawLine(margin, y, width - margin, y)
+        painter.fillRect(self.rect(), QBrush(Qt.white))
 
-        # Оси координат
-        painter.setPen(QPen(Qt.black, 2))
-        x_axis_y = margin + graph_height - ((0 - min_y) / (max_y - min_y)) * graph_height if min_y <= 0 <= max_y else height - margin
-        y_axis_x = margin + ((0 - min_x) / (max_x - min_x)) * graph_width if min_x <= 0 <= max_x else margin
-        painter.drawLine(margin, x_axis_y, width - margin, x_axis_y)
-        painter.drawLine(y_axis_x, margin, y_axis_x, height - margin)
+        # Рисуем сетку
+        pen = QPen(Qt.lightGray, 1, Qt.DashLine)
+        painter.setPen(pen)
+
+        i = self.x_min
+        while i <= self.x_max:
+            x = center_x + i * grid_step
+            painter.drawLine(x, 0, x, height)
+            painter.drawLine(0, center_y - i * grid_step, width, center_y - i * grid_step)
+            i += self.step
+
+        # Рисуем оси
+        pen.setColor(Qt.black)
+        pen.setWidth(2)
+        pen.setStyle(Qt.SolidLine)
+        painter.setPen(pen)
+        painter.drawLine(0, center_y, width, center_y)
+        painter.drawLine(center_x, 0, center_x, height)
 
         # Подписи осей
-        font = painter.font()
+        font = QFont()
+        font.setPointSize(12)
+        painter.setFont(font)
+        painter.drawText(width - 30, center_y - 5, "X")
+        painter.drawText(center_x + 10, 15, "Y")
+
+        # Подписи меток на осях
         font.setPointSize(10)
         painter.setFont(font)
-        for i in range(11):
-            x_val = min_x + i * (max_x - min_x) / 10
-            y_val = max_y - i * (max_y - min_y) / 10
-            x = margin + i * step_x
-            y = margin + i * step_y
-            painter.drawText(x - 10, x_axis_y + 15, f"{x_val:.1f}")
-            painter.drawText(y_axis_x - 30, y + 5, f"{y_val:.1f}")
+        i = self.x_min + self.step
+        while i <= self.x_max:
+            x = center_x + i * grid_step
+            y = center_y - i * grid_step
+            if i != 0:
+                painter.drawText(x - 15, center_y + 20, f"{i:.2f}")
+                painter.drawText(center_x - 40, y + 5, f"{i:.2f}")
+            i += self.step
 
-        # Рисуем графики
-        colors = [Qt.red, Qt.green, Qt.blue]
-        for idx, (func_id, points) in enumerate(self.data.items()):
-            pen = QPen(colors[idx % len(colors)])
-            pen.setWidth(2)
-            painter.setPen(pen)
-            prev_point = None
-            for x, y in points:
-                px = margin + ((x - min_x) / (max_x - min_x)) * graph_width
-                py = margin + graph_height - ((y - min_y) / (max_y - min_y)) * graph_height
+        # Рисуем выбранные функции
+        pen.setWidth(2)
+        for key in self.selected_functions:
+            if key in self.available_functions:
+                func, color = self.available_functions[key]
+                pen.setColor(color)
+                painter.setPen(pen)
+                self.draw_function(painter, func, center_x, center_y, grid_step)
+
+        # Рисуем легенду
+        self.draw_legend(painter, width, height)
+
+    def draw_function(self, painter, func, cx, cy, scale, step=0.05):
+        prev_point = None
+        x = self.x_min
+        while x <= self.x_max:
+            y = func(x)
+            if y is not None and self.y_min <= y <= self.y_max:
+                px, py = cx + x * scale, cy - y * scale
                 if prev_point:
-                    painter.drawLine(prev_point, QPointF(px, py))
-                prev_point = QPointF(px, py)
-            # Легенда
-            painter.drawText(margin, margin + 20 * idx, functions[func_id][1])
+                    painter.drawLine(prev_point[0], prev_point[1], px, py)
+                prev_point = (px, py)
+            else:
+                prev_point = None
+            x += step
+
+    def draw_legend(self, painter, width, height):
+        font = QFont()
+        font.setPointSize(10)
+        painter.setFont(font)
+
+        legend_x = width - 150
+        legend_y = 30
+        line_height = 20
+
+        for key in self.selected_functions:
+            if key in self.function_formulas:
+                formula = self.function_formulas[key]
+                painter.setPen(QPen(self.available_functions[key][1]))
+                painter.drawText(legend_x, legend_y, f"{key}: {formula}")
+                legend_y += line_height
+
+    def update_settings(self, x_min, x_max, step, selected_functions):
+        self.x_min = x_min
+        self.x_max = x_max
+        self.y_min = x_min
+        self.y_max = x_max
+        self.step = step
+        self.selected_functions = selected_functions
+        self.update()
+
+
+class SettingsWindow(QWidget):
+    def __init__(self, plot_widget):
+        super().__init__()
+        self.setWindowTitle("Настройки")
+        layout = QVBoxLayout()
+
+        self.x_min_spin = QDoubleSpinBox()
+        self.x_min_spin.setRange(-1000.0, 1000.0)
+        self.x_min_spin.setValue(plot_widget.x_min)
+        self.x_min_spin.valueChanged.connect(self.update_plot)
+
+        self.x_max_spin = QDoubleSpinBox()
+        self.x_max_spin.setRange(-1000.0, 1000.0)
+        self.x_max_spin.setValue(plot_widget.x_max)
+        self.x_max_spin.valueChanged.connect(self.update_plot)
+
+        self.step_spin = QDoubleSpinBox()
+        self.step_spin.setRange(0.1, 10.0)
+        self.step_spin.setValue(plot_widget.step)
+        self.step_spin.valueChanged.connect(self.update_plot)
+
+        self.function_input = QLineEdit()
+        self.function_input.setPlaceholderText("Введите номера функций, например: 1,2,3")
+        self.function_input.textChanged.connect(self.update_plot)
+
+        layout.addWidget(QLabel("X min:"))
+        layout.addWidget(self.x_min_spin)
+        layout.addWidget(QLabel("X max:"))
+        layout.addWidget(self.x_max_spin)
+        layout.addWidget(QLabel("Step:"))
+        layout.addWidget(self.step_spin)
+        layout.addWidget(QLabel("Функции:"))
+        layout.addWidget(self.function_input)
+        self.setLayout(layout)
+
+        self.plot_widget = plot_widget
+
+    def update_plot(self):
+        selected_functions = [f.strip() for f in self.function_input.text().split(",") if
+                              f.strip() in self.plot_widget.available_functions]
+        self.plot_widget.update_settings(self.x_min_spin.value(), self.x_max_spin.value(), self.step_spin.value(),
+                                         selected_functions)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("График функций")
+        self.setWindowTitle("Графики функций")
+        self.setGeometry(100, 100, 900, 700)
+
+        self.plot_widget = PlotWidget()
+        self.settings_window = SettingsWindow(self.plot_widget)
+
         layout = QVBoxLayout()
-        self.input_a = QLineEdit()
-        self.input_a.setPlaceholderText("Введите a")
-        layout.addWidget(self.input_a)
-        self.input_b = QLineEdit()
-        self.input_b.setPlaceholderText("Введите b")
-        layout.addWidget(self.input_b)
-        self.input_n = QLineEdit()
-        self.input_n.setPlaceholderText("Введите n (кол-во точек)")
-        layout.addWidget(self.input_n)
-        self.input_funcs = QLineEdit()
-        self.input_funcs.setPlaceholderText("Введите номера функций (например: 1,2)")
-        layout.addWidget(self.input_funcs)
-        self.plot_button = QPushButton("Построить график")
-        self.plot_button.clicked.connect(self.plot_graph)
-        layout.addWidget(self.plot_button)
+        layout.addWidget(self.plot_widget)
+
+        settings_button = QPushButton("Настройки")
+        settings_button.clicked.connect(self.settings_window.show)
+        layout.addWidget(settings_button)
+
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
 
-    def plot_graph(self):
-        try:
-            a = float(self.input_a.text())
-            b = float(self.input_b.text())
-            n = int(self.input_n.text())
-            func_ids = [int(f.strip()) for f in self.input_funcs.text().split(',') if f.strip().isdigit()]
-            if a >= b or n <= 1 or any(fid not in functions for fid in func_ids):
-                raise ValueError
-            step = (b - a) / (n - 1)
-            data = {}
-            global min_x, max_x, min_y, max_y
-            min_x, max_x = a, b
-            min_y, max_y = float('inf'), float('-inf')
-            for fid in func_ids:
-                func, _ = functions[fid]
-                points = [(x, func(x)) for x in [a + i * step for i in range(n)]]
-                data[fid] = points
-                min_y = min(min_y, min(y for _, y in points))
-                max_y = max(max_y, max(y for _, y in points))
-            self.graph_window = GraphWidget(data)
-            self.graph_window.resize(800, 600)
-            self.graph_window.show()
-        except ValueError:
-            QMessageBox.warning(self, "Ошибка", "Пожалуйста, введите корректные данные.")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
