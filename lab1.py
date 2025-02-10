@@ -3,7 +3,7 @@ import numpy as np
 from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, QDoubleSpinBox, QLabel, QPushButton,
                                QHBoxLayout, QLineEdit)
 from PySide6.QtGui import QPainter, QPen, QBrush, QFont
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPointF
 
 
 class PlotWidget(QWidget):
@@ -16,13 +16,13 @@ class PlotWidget(QWidget):
         self.y_max = self.x_max
         self.step = 1.0
         self.available_functions = {
-            "1": (lambda x: x ** 2, Qt.blue),  # f(x) = x^2
-            "2": (lambda x: np.sin(x) * np.exp(-0.1 * x ** 2), Qt.green),  # f(x) = sin(x) * exp(-0.1 * x^2)
+            "1": (lambda x: x, Qt.blue),  # f(x) = x^2
+            "2": (lambda x: x ** 2, Qt.green),  # f(x) = sin(x) * exp(-0.1 * x^2)
             "3": (lambda x: 1 / x if x != 0 else None, Qt.red)  # f(x) = 1/x
         }
         self.function_formulas = {
-            "1": "f(x) = x^2",
-            "2": "f(x) = sin(x) * exp(-0.1 * x^2)",
+            "1": "f(x) = x",
+            "2": "f(x) = x^2",
             "3": "f(x) = 1/x"
         }
         self.selected_functions = []  # Список выбранных функций
@@ -87,19 +87,34 @@ class PlotWidget(QWidget):
         # Рисуем легенду
         self.draw_legend(painter, width, height)
 
-    def draw_function(self, painter, func, cx, cy, scale, step=0.05):
-        prev_point = None
-        x = self.x_min
-        while x <= self.x_max:
-            y = func(x)
+    def draw_function(self, painter, func, cx, cy, scale):
+        bar_width = scale * self.step * 0.8  # Ширина столбцов
+        painter.setBrush(QBrush(Qt.gray, Qt.SolidPattern))
+
+        for i in np.arange(self.x_min, self.x_max, self.step):
+            y = func(i)
+
             if y is not None and self.y_min <= y <= self.y_max:
-                px, py = cx + x * scale, cy - y * scale
-                if prev_point:
-                    painter.drawLine(prev_point[0], prev_point[1], px, py)
-                prev_point = (px, py)
-            else:
-                prev_point = None
-            x += step
+                px = cx + i * scale
+                py = cy - y * scale
+
+                # Определим высоту конуса, которое будет зависеть от значения y
+                cone_height = y * scale  # Высота конуса (можно сделать масштабируемой)
+
+                # Точки для рисования конуса
+                points = [
+                    QPointF(px, py - cone_height),  # Верхушка конуса
+                    QPointF(px - bar_width / 2, cy),  # Левая нижняя точка
+                    QPointF(px + bar_width / 2, cy)  # Правая нижняя точка
+                ]
+
+                # Добавляем закругление снизу
+                painter.setBrush(QBrush(Qt.darkGray, Qt.SolidPattern))
+                painter.drawEllipse(QPointF(px, cy), bar_width / 2, bar_width / 4)
+
+                # Рисуем конус (пирамиду) с верхушкой в точке (px, py - cone_height)
+                painter.setBrush(QBrush(Qt.gray, Qt.SolidPattern))
+                painter.drawPolygon(points)
 
     def draw_legend(self, painter, width, height):
         font = QFont()
