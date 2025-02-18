@@ -2,8 +2,8 @@ import sys
 import numpy as np
 from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, QDoubleSpinBox, QLabel, QPushButton,
                                QHBoxLayout, QLineEdit)
-from PySide6.QtGui import QPainter, QPen, QBrush, QFont
-from PySide6.QtCore import Qt, QPointF
+from PySide6.QtGui import QPainter, QPen, QBrush, QFont, QPainterPath
+from PySide6.QtCore import Qt, QPointF, QRectF
 
 
 class PlotWidget(QWidget):
@@ -81,40 +81,51 @@ class PlotWidget(QWidget):
             if key in self.available_functions:
                 func, color = self.available_functions[key]
                 pen.setColor(color)
-                painter.setPen(pen)
-                self.draw_function(painter, func, center_x, center_y, grid_step)
+                self.draw_function(painter, func, center_x, center_y, grid_step, pen)
 
         # Рисуем легенду
         self.draw_legend(painter, width, height)
 
-    def draw_function(self, painter, func, cx, cy, scale):
-        bar_width = scale * self.step * 0.8  # Ширина столбцов
+    def draw_function(self, painter, func, cx, cy, scale, pen):
+        bar_width = scale * self.step * 0.8  # Ширина треугольника
         painter.setBrush(QBrush(Qt.gray, Qt.SolidPattern))
 
         for i in np.arange(self.x_min, self.x_max, self.step):
             y = func(i)
 
             if y is not None and self.y_min <= y <= self.y_max:
+                painter.setPen(Qt.NoPen)  # Убираем контур для заливки
                 px = cx + i * scale
                 py = cy - y * scale
 
-                # Определим высоту конуса, которое будет зависеть от значения y
-                cone_height = y * scale  # Высота конуса (можно сделать масштабируемой)
+                # Высота конуса
+                cone_height = y * scale
 
-                # Точки для рисования конуса
-                points = [
-                    QPointF(px, py - cone_height),  # Верхушка конуса
-                    QPointF(px - bar_width / 2, cy),  # Левая нижняя точка
-                    QPointF(px + bar_width / 2, cy)  # Правая нижняя точка
-                ]
+                # Точки треугольника
+                top = QPointF(px, py - cone_height)  # Верхушка
+                left = QPointF(px - bar_width / 2, cy)  # Левая нижняя
+                right = QPointF(px + bar_width / 2, cy)  # Правая нижняя
 
-                # Добавляем закругление снизу
-                painter.setBrush(QBrush(Qt.darkGray, Qt.SolidPattern))
-                painter.drawEllipse(QPointF(px, cy), bar_width / 2, bar_width / 4)
+                rect = QRectF(px - bar_width / 2, cy - bar_width / 4, bar_width, bar_width / 2)
 
-                # Рисуем конус (пирамиду) с верхушкой в точке (px, py - cone_height)
-                painter.setBrush(QBrush(Qt.gray, Qt.SolidPattern))
-                painter.drawPolygon(points)
+                if y > 0:
+                    painter.drawPie(rect, 180 * 16, 180 * 16)  # Верхняя половина
+                else:
+                    painter.drawPie(rect, 0 * 16, 180 * 16)  # Нижняя половина
+
+                # Заливаем конус
+                painter.drawPolygon([top, left, right])
+
+                painter.setPen(pen)  # Используем тот же цвет для границы
+
+                if y > 0:
+                    painter.drawArc(rect, 180 * 16, 180 * 16)  # Верхняя дуга
+                else:
+                    painter.drawArc(rect, 0 * 16, 180 * 16)  # Нижняя дуга
+
+                # Отдельно рисуем только боковые линии, не соединяя их снизу
+                painter.drawLine(top, left)
+                painter.drawLine(top, right)
 
     def draw_legend(self, painter, width, height):
         font = QFont()
