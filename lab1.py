@@ -155,23 +155,10 @@ class PlotWidget(QWidget):
     def update_settings(self, x_min, x_max, step, selected_functions):
         self.x_min = x_min
         self.x_max = x_max
+        self.y_min = x_min
+        self.y_max = x_max
         self.step = step
         self.selected_functions = selected_functions
-
-        # Вычисляем y_min и y_max
-        y_values = []
-        for key in self.selected_functions:
-            if key in self.available_functions:
-                func, _ = self.available_functions[key]
-                x_values = np.arange(self.x_min, self.x_max + self.step, self.step)
-                y_values.extend([func(x) for x in x_values if func(x) is not None])
-
-        if y_values:
-            self.y_min = min(y_values)
-            self.y_max = max(y_values)
-        else:
-            self.y_min, self.y_max = self.x_min, self.x_max  # По умолчанию
-
         self.update()
 
 
