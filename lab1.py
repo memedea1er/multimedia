@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QPointF, QRectF
 class PlotWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(600, 600)
         self.x_min = -10.0
         self.x_max = 10.0
         self.y_min = self.x_min
@@ -32,8 +32,7 @@ class PlotWidget(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         width, height = self.width(), self.height()
-        center_x, center_y = width // 2, height // 2
-        grid_step = min(width, height) / ((self.x_max - self.x_min) / self.step * 2)
+        grid_step = min(width, height) / ((self.x_max - self.x_min) / self.step)
 
         painter.fillRect(self.rect(), QBrush(Qt.white))
 
@@ -41,11 +40,18 @@ class PlotWidget(QWidget):
         pen = QPen(Qt.lightGray, 1, Qt.DashLine)
         painter.setPen(pen)
 
+        # Сетка по X
         i = self.x_min
         while i <= self.x_max:
-            x = center_x + i * grid_step
+            x = (i - self.x_min) * grid_step
             painter.drawLine(x, 0, x, height)
-            painter.drawLine(0, center_y - i * grid_step, width, center_y - i * grid_step)
+            i += self.step
+
+        # Сетка по Y
+        i = self.y_min
+        while i <= self.y_max:
+            y = (self.y_max - i) * grid_step
+            painter.drawLine(0, y, width, y)
             i += self.step
 
         # Рисуем оси
@@ -53,26 +59,32 @@ class PlotWidget(QWidget):
         pen.setWidth(2)
         pen.setStyle(Qt.SolidLine)
         painter.setPen(pen)
-        painter.drawLine(0, center_y, width, center_y)
-        painter.drawLine(center_x, 0, center_x, height)
+
+        # Ось X
+        x_axis_y = (self.y_max - 0) * grid_step
+        painter.drawLine(0, x_axis_y, width, x_axis_y)
+
+        # Ось Y
+        y_axis_x = (0 - self.x_min) * grid_step
+        painter.drawLine(y_axis_x, 0, y_axis_x, height)
 
         # Подписи осей
         font = QFont()
         font.setPointSize(12)
         painter.setFont(font)
-        painter.drawText(width - 30, center_y - 5, "X")
-        painter.drawText(center_x + 10, 15, "Y")
+        painter.drawText(width - 30, x_axis_y - 5, "X")
+        painter.drawText(y_axis_x + 10, 15, "Y")
 
         # Подписи меток на осях
         font.setPointSize(10)
         painter.setFont(font)
         i = self.x_min + self.step
         while i <= self.x_max:
-            x = center_x + i * grid_step
-            y = center_y - i * grid_step
+            x = (i - self.x_min) * grid_step
+            y = (self.y_max - i) * grid_step
             if i != 0:
-                painter.drawText(x - 15, center_y + 20, f"{i:.2f}")
-                painter.drawText(center_x - 40, y + 5, f"{i:.2f}")
+                painter.drawText(x - 15, x_axis_y + 20, f"{i:.2f}")
+                painter.drawText(y_axis_x - 40, y + 5, f"{i:.2f}")
             i += self.step
 
         # Рисуем выбранные функции
@@ -81,7 +93,7 @@ class PlotWidget(QWidget):
             if key in self.available_functions:
                 func, color = self.available_functions[key]
                 pen.setColor(color)
-                self.draw_function(painter, func, center_x, center_y, grid_step, pen)
+                self.draw_function(painter, func, y_axis_x, x_axis_y, grid_step, pen)
 
         # Рисуем легенду
         self.draw_legend(painter, width, height)
@@ -93,16 +105,13 @@ class PlotWidget(QWidget):
         for i in np.arange(self.x_min, self.x_max, self.step):
             y = func(i)
 
-            if y is not None and self.y_min <= y <= self.y_max:
+            if y is not None and self.x_min <= i <= self.x_max:
                 painter.setPen(Qt.NoPen)  # Убираем контур для заливки
                 px = cx + i * scale
                 py = cy - y * scale
 
-                # Высота конуса
-                cone_height = y * scale
-
                 # Точки треугольника
-                top = QPointF(px, py - cone_height)  # Верхушка
+                top = QPointF(px, py)  # Верхушка
                 left = QPointF(px - bar_width / 2, cy)  # Левая нижняя
                 right = QPointF(px + bar_width / 2, cy)  # Правая нижняя
 
@@ -146,10 +155,23 @@ class PlotWidget(QWidget):
     def update_settings(self, x_min, x_max, step, selected_functions):
         self.x_min = x_min
         self.x_max = x_max
-        self.y_min = x_min
-        self.y_max = x_max
         self.step = step
         self.selected_functions = selected_functions
+
+        # Вычисляем y_min и y_max
+        y_values = []
+        for key in self.selected_functions:
+            if key in self.available_functions:
+                func, _ = self.available_functions[key]
+                x_values = np.arange(self.x_min, self.x_max + self.step, self.step)
+                y_values.extend([func(x) for x in x_values if func(x) is not None])
+
+        if y_values:
+            self.y_min = min(y_values)
+            self.y_max = max(y_values)
+        else:
+            self.y_min, self.y_max = self.x_min, self.x_max  # По умолчанию
+
         self.update()
 
 
@@ -201,7 +223,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Графики функций")
-        self.setGeometry(100, 100, 900, 700)
+        self.setGeometry(100, 100, 700, 700)
 
         self.plot_widget = PlotWidget()
         self.settings_window = SettingsWindow(self.plot_widget)
