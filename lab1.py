@@ -32,7 +32,7 @@ class PlotWidget(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         width, height = self.width(), self.height()
-        grid_step = min(width, height) / ((self.x_max - self.x_min) / self.step)
+        grid_step = min(width, height) / (self.x_max - self.x_min)
 
         painter.fillRect(self.rect(), QBrush(Qt.white))
 
@@ -68,6 +68,21 @@ class PlotWidget(QWidget):
         y_axis_x = (0 - self.x_min) * grid_step
         painter.drawLine(y_axis_x, 0, y_axis_x, height)
 
+        # Рисуем выбранные функции
+        pen.setWidth(2)
+        for key in self.selected_functions:
+            if key in self.available_functions:
+                func, color = self.available_functions[key]
+                pen.setColor(color)
+                self.draw_function(painter, func, y_axis_x, x_axis_y, grid_step, pen)
+
+        # Рисуем легенду
+        self.draw_legend(painter, width, height)
+
+        # Рисуем оси
+        pen.setColor(Qt.black)
+        painter.setPen(pen)
+
         # Подписи осей
         font = QFont()
         font.setPointSize(12)
@@ -87,27 +102,16 @@ class PlotWidget(QWidget):
                 painter.drawText(y_axis_x - 40, y + 5, f"{i:.2f}")
             i += self.step
 
-        # Рисуем выбранные функции
-        pen.setWidth(2)
-        for key in self.selected_functions:
-            if key in self.available_functions:
-                func, color = self.available_functions[key]
-                pen.setColor(color)
-                self.draw_function(painter, func, y_axis_x, x_axis_y, grid_step, pen)
-
-        # Рисуем легенду
-        self.draw_legend(painter, width, height)
-
     def draw_function(self, painter, func, cx, cy, scale, pen):
         bar_width = scale * self.step * 0.8  # Ширина треугольника
         painter.setBrush(QBrush(Qt.gray, Qt.SolidPattern))
 
-        for i in np.arange(self.x_min, self.x_max, self.step):
-            y = func(i)
+        for x in np.arange(self.x_min, self.x_max+self.step, self.step):
+            y = func(x)
 
-            if y is not None and self.x_min <= i <= self.x_max:
+            if y is not None and self.x_min <= x <= self.x_max:
                 painter.setPen(Qt.NoPen)  # Убираем контур для заливки
-                px = cx + i * scale
+                px = cx + x * scale
                 py = cy - y * scale
 
                 # Точки треугольника
@@ -152,12 +156,12 @@ class PlotWidget(QWidget):
                 painter.drawText(legend_x, legend_y, f"{key}: {formula}")
                 legend_y += line_height
 
-    def update_settings(self, x_min, x_max, step, selected_functions):
+    def update_settings(self, x_min, x_max, selected_functions):
         self.x_min = x_min
         self.x_max = x_max
         self.y_min = x_min
         self.y_max = x_max
-        self.step = step
+        self.step = abs(x_max-x_min) / 20
         self.selected_functions = selected_functions
         self.update()
 
@@ -178,11 +182,6 @@ class SettingsWindow(QWidget):
         self.x_max_spin.setValue(plot_widget.x_max)
         self.x_max_spin.valueChanged.connect(self.update_plot)
 
-        self.step_spin = QDoubleSpinBox()
-        self.step_spin.setRange(0.1, 10.0)
-        self.step_spin.setValue(plot_widget.step)
-        self.step_spin.valueChanged.connect(self.update_plot)
-
         self.function_input = QLineEdit()
         self.function_input.setPlaceholderText("Введите номера функций, например: 1,2,3")
         self.function_input.textChanged.connect(self.update_plot)
@@ -191,8 +190,6 @@ class SettingsWindow(QWidget):
         layout.addWidget(self.x_min_spin)
         layout.addWidget(QLabel("X max:"))
         layout.addWidget(self.x_max_spin)
-        layout.addWidget(QLabel("Step:"))
-        layout.addWidget(self.step_spin)
         layout.addWidget(QLabel("Функции:"))
         layout.addWidget(self.function_input)
         self.setLayout(layout)
@@ -202,7 +199,7 @@ class SettingsWindow(QWidget):
     def update_plot(self):
         selected_functions = [f.strip() for f in self.function_input.text().split(",") if
                               f.strip() in self.plot_widget.available_functions]
-        self.plot_widget.update_settings(self.x_min_spin.value(), self.x_max_spin.value(), self.step_spin.value(),
+        self.plot_widget.update_settings(self.x_min_spin.value(), self.x_max_spin.value(),
                                          selected_functions)
 
 
